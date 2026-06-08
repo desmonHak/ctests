@@ -1,0 +1,6 @@
+@PACKAGE_INIT@
+
+# ctests es header-only: solo necesitamos re-exportar el target importado.
+include("${CMAKE_CURRENT_LIST_DIR}/ctestsTargets.cmake")
+
+check_required_components(ctests)
