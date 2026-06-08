@@ -18,10 +18,10 @@
  * funciona en C y en C++. En C++ ademas se habilitan EXPECT_THROW y
  * EXPECT_NO_THROW para verificar excepciones.
  *
- * El header vive en la raiz del repo; compila desde example/ con -I..
- * (o deja que CMake configure el include path automaticamente).
+ * El header vive en la raiz del repo; compila desde example/ con -I.. y anade
+ * ctests.c (la implementacion). Con CMake todo es automatico.
  * @code
- *   g++ -std=c++17 -I.. example/example_test.cpp -o example_test && ./example_test
+ *   g++ -std=c++17 -I.. example/example_test.cpp ctests.c -o example_test -lm && ./example_test
  * @endcode
  */
 #include "ctests.h"

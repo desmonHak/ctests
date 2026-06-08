@@ -109,6 +109,26 @@ int main(void) {
 - Cada `tt_suite()` **resetea** los hooks. Si la siguiente suite también los
   necesita, vuelve a llamar a `tt_suite_hooks()`.
 
+### Hooks "once" por suite
+
+Si el coste de preparar es alto y solo hace falta una vez por grupo (arrancar un
+servidor, abrir una conexión), usa `tt_suite_hooks_once(before_all, after_all)`:
+
+```c
+static Servidor *srv;
+static void arrancar(void) { srv = servidor_arrancar(8080); }   /* una vez */
+static void parar(void)    { servidor_parar(srv); }             /* una vez */
+
+tt_suite("API");
+    tt_suite_hooks_once(arrancar, parar);
+    tt_run("GET /users", test_get_users);
+    tt_run("POST /users", test_post_users);
+```
+
+`before_all` corre antes del primer test; `after_all`, tras el último. Se
+combinan con `tt_suite_hooks()`: el orden es `before_all` → (`setup` → test →
+`teardown`) por cada test → `after_all`.
+
 ## 5. Saltar tests (skip)
 
 Hay dos maneras de marcar un test como saltado (no cuenta como fallo):
@@ -141,8 +161,8 @@ failure* con `tt_xfail(nombre, razon, funcion)`:
 tt_xfail("calculo roto del IVA", "bug #42 sin corregir", test_iva);
 ```
 
-- Si el test **falla** → se reporta como `xfail` (morado) y **no** rompe la build.
-- Si el test **pasa** → se reporta como `xpass` (¡el bug se arregló y nadie quitó
+- Si el test **falla** -> se reporta como `xfail` (morado) y **no** rompe la build.
+- Si el test **pasa** -> se reporta como `xpass` (¡el bug se arregló y nadie quitó
   el xfail!) y **sí** cuenta como fallo, recordándote actualizarlo.
 
 ## 7. Verbosidad
@@ -191,7 +211,82 @@ int main(void) {
 }
 ```
 
-## 9. Uso en CI
+## 9. Tests parametrizados (data-driven)
+
+Para ejecutar la misma lógica sobre una tabla de casos, usa `tt_run_param()`:
+fija el dato del caso en `tt_param` y tu función lo lee.
+
+```c
+struct Caso { int a, b, esperado; };
+static const struct Caso casos[] = {{1,1,2}, {2,3,5}, {-4,4,0}};
+
+static void test_suma(void) {
+    const struct Caso *c = (const struct Caso *)tt_param;
+    EXPECT_MSG(c->a + c->b == c->esperado,
+               "%d + %d != %d", c->a, c->b, c->esperado);
+}
+
+int main(void) {
+    size_t i;
+    tt_suite("Suma (data-driven)");
+    for (i = 0; i < sizeof(casos)/sizeof(casos[0]); i++) {
+        char nm[32];
+        snprintf(nm, sizeof nm, "caso %u", (unsigned)i);
+        tt_run_param(nm, test_suma, &casos[i]);
+    }
+    return tt_summary();
+}
+```
+
+## 10. Repartir tests en varios archivos
+
+El estado de ctests es compartido, así que puedes poner cada grupo de tests en su
+propio archivo. Cada uno incluye `ctests.h` y expone una función que registra su
+suite; `main` las llama en orden.
+
+```c
+/* suite_aritmetica.c */
+#include "ctests.h"
+static void test_suma(void) { EXPECT_EQ_INT(2+2, 4); }
+void registrar_aritmetica(void) {
+    tt_suite("Aritmetica");
+        tt_run("suma", test_suma);
+}
+```
+
+```c
+/* main.c */
+#include "ctests.h"
+void registrar_aritmetica(void);   /* definida en otro archivo */
+int main(void) {
+    registrar_aritmetica();
+    return tt_summary();
+}
+```
+
+Compila todos juntos (más `ctests.c`, o define `CTESTS_IMPLEMENTATION` en uno).
+Ver el ejemplo `example/multifile_*.c`.
+
+## 11. Línea de comandos y JUnit
+
+Llama a `tt_parse_args(argc, argv)` al principio de `main` para aceptar opciones:
+
+```c
+int main(int argc, char **argv) {
+    tt_parse_args(argc, argv);
+    /* ... suites ... */
+    return tt_summary();
+}
+```
+
+```bash
+./mis_tests --filter Aritmetica   # ejecuta solo lo que contenga ese texto
+./mis_tests --junit results.xml   # genera informe JUnit XML
+./mis_tests --no-color            # sin color (o exporta NO_COLOR=1)
+./mis_tests --verbose 2
+```
+
+## 12. Uso en CI
 
 `tt_summary()` devuelve `0` si todo pasó y `1` si hubo cualquier fallo (incluido
 un `xpass`). Como `main` propaga ese valor, tu sistema de CI detecta el fallo sin
@@ -202,6 +297,10 @@ cmake -S . -B build
 cmake --build build
 ctest --test-dir build --output-on-failure   # exit != 0 si algun test falla
 ```
+
+Para que la plataforma de CI muestre los resultados de forma nativa, genera un
+informe JUnit XML (`--junit results.xml` o `tt_output_junit("results.xml")`) y
+publícalo como artefacto/resultado de tests.
 
 ## Siguiente paso
 

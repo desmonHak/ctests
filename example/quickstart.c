@@ -14,9 +14,12 @@
  * @file quickstart.c
  * @brief El ejemplo minimo posible con ctests.h.
  *
+ * Compilacion manual (anade ctests.c, que trae la implementacion):
  * @code
- *   gcc -std=c99 -I.. example/quickstart.c -o quickstart -lm && ./quickstart
+ *   gcc -std=c99 -I.. example/quickstart.c ctests.c -o quickstart -lm && ./quickstart
  * @endcode
+ * O en modo "single header": define CTESTS_IMPLEMENTATION en este archivo y
+ * compila solo quickstart.c.
  */
 #include "ctests.h"
 

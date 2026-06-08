@@ -39,6 +39,9 @@ int main(void) {
   cabecera con los conteos exactos (`✓ Suite (N tests | M failed)`).
 - No hay asignación dinámica ni hilos: todo el estado es estático. Por eso los
   tamaños máximos son [macros de configuración](configuracion.md).
+- El estado global se define **una vez** (en `ctests.c` o en el archivo con
+  `CTESTS_IMPLEMENTATION`) y se comparte vía símbolos `extern`. Por eso puedes
+  incluir `ctests.h` y repartir tus tests entre **varios archivos** sin problema.
 
-> **Nota:** el corredor es de un solo hilo y usa estado global estático; no está
-> pensado para ejecutar tests en paralelo dentro del mismo proceso.
+> **Nota:** el corredor es de un solo hilo y usa estado global; no está pensado
+> para ejecutar tests en paralelo dentro del mismo proceso.

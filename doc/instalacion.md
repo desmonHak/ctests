@@ -1,12 +1,15 @@
 # Instalación e integración
 
-`ctests` es header-only: en esencia solo necesitas que el compilador encuentre
-`ctests.h`. Hay cuatro formas de conseguirlo, de la más recomendable a la más simple.
+`ctests` son dos archivos: `ctests.h` (API + macros) y `ctests.c` (la
+implementación, que se compila una sola vez). Incluyes `ctests.h` en todos tus
+archivos de test y compilas `ctests.c` una vez — o, si prefieres un único
+archivo, usas el modo single-header (sección 4b). Hay cuatro formas de
+integrarlo, de la más recomendable a la más simple.
 
-> En sistemas tipo Unix/Linux el header usa `fabs()` de `<math.h>`, así que hay
-> que enlazar la librería matemática con `-lm`. El target de CMake `ctests::ctests`
-> ya lo añade por ti; si compilas a mano, no lo olvides. En Windows/MinGW y macOS
-> normalmente no hace falta.
+> En sistemas tipo Unix/Linux la macro `EXPECT_NEAR` usa `fabs()` de `<math.h>`,
+> así que hay que enlazar la librería matemática con `-lm`. El target de CMake
+> `ctests::ctests` ya lo añade por ti; si compilas a mano, no lo olvides. En
+> Windows/MinGW y macOS normalmente no hace falta.
 
 ---
 
@@ -87,22 +90,43 @@ cmake -S . -B build -DCMAKE_PREFIX_PATH=/ruta/de/instalacion
 
 ## 4. Copia manual (sin CMake)
 
-La opción más simple: copia `ctests.h` a tu proyecto y compílalo directamente.
+La librería son dos archivos: el header `ctests.h` (API + macros) y `ctests.c`
+(la implementación, que se compila una sola vez). Tienes dos variantes:
+
+### 4a. Header + implementación (recomendada)
+
+Copia ambos archivos y añade `ctests.c` a tu build. Incluye `ctests.h` en
+cuantos archivos de test quieras:
 
 ```bash
-cp ctests.h mi_proyecto/
+cp ctests.h ctests.c mi_proyecto/
 
 # C
-gcc -std=c99   mi_proyecto/mis_tests.c   -o mis_tests -lm
+gcc -std=c99   mis_tests.c ctests.c -o mis_tests -lm
 # C++
-g++ -std=c++17 mi_proyecto/mis_tests.cpp -o mis_tests
+g++ -std=c++17 mis_tests.cpp ctests.c -o mis_tests -lm
 ```
 
-Si el header está en otra carpeta, indica la ruta de include con `-I`:
+### 4b. Single-header (solo `ctests.h`)
+
+Si prefieres llevar un único archivo, copia solo `ctests.h` y define
+`CTESTS_IMPLEMENTATION` en **exactamente uno** de tus `.c`/`.cpp` antes de incluirlo:
+
+```c
+/* en UN solo archivo de todo tu proyecto de tests */
+#define CTESTS_IMPLEMENTATION
+#include "ctests.h"
+```
 
 ```bash
-gcc -std=c99 -Iextern/ctests mis_tests.c -o mis_tests -lm
+gcc -std=c99 mis_tests.c -o mis_tests -lm
 ```
+
+En el resto de archivos de test incluye `ctests.h` con normalidad (sin la macro).
+Define la macro en más de un archivo que se enlace junto → símbolos duplicados.
+
+> Si los archivos están en otra carpeta, indica la ruta de include con `-I`:
+> `gcc -std=c99 -Iextern/ctests mis_tests.c extern/ctests/ctests.c -o mis_tests -lm`
 
 ---
 

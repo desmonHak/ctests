@@ -20,10 +20,12 @@ familias:
 |-------|----------|---------|
 | `EXPECT_TRUE(c)`  | `c` es falso | `Expected TRUE: <c>` |
 | `EXPECT_FALSE(c)` | `c` es verdadero | `Expected FALSE: <c>` |
+| `EXPECT_MSG(c, ...)` | `c` es falso (mensaje `printf`-style propio) | el que tú escribas |
 
 ```c
 EXPECT_TRUE(lista_vacia(l));
 EXPECT_FALSE(error_ocurrido());
+EXPECT_MSG(saldo >= 0, "saldo negativo: %d", saldo);
 ```
 
 ### Punteros
@@ -32,10 +34,12 @@ EXPECT_FALSE(error_ocurrido());
 |-------|----------|
 | `EXPECT_NULL(p)`     | `p != NULL` |
 | `EXPECT_NOT_NULL(p)` | `p == NULL` |
+| `EXPECT_EQ_PTR(a, b)` | `a != b` (igualdad de punteros, formato `%p`) |
 
 ```c
 EXPECT_NOT_NULL(buffer);
 EXPECT_NULL(buscar(lista, "inexistente"));
+EXPECT_EQ_PTR(nodo->siguiente, esperado);
 ```
 
 ### Enteros
@@ -55,6 +59,20 @@ EXPECT_NULL(buscar(lista, "inexistente"));
 ```c
 EXPECT_EQ_INT(sumar(2, 3), 5);
 EXPECT_NEQ_INT(id_nuevo(), id_viejo());
+```
+
+### Enteros sin signo
+
+Como `EXPECT_EQ_INT` castea a `long long`, usa estas para valores que no caben con
+signo (p. ej. `unsigned long long` cercanos a `2^64`):
+
+| Macro | Falla si |
+|-------|----------|
+| `EXPECT_EQ_UINT(a, b)`  | `a != b` (comparados como `unsigned long long`) |
+| `EXPECT_NEQ_UINT(a, b)` | `a == b` |
+
+```c
+EXPECT_EQ_UINT(hash, 0xFFFFFFFFFFFFFFFFULL);
 ```
 
 ### Comparaciones de orden
@@ -101,6 +119,21 @@ EXPECT_STARTS_WITH(url, "https://");
 > En C++ usa `std::string::c_str()` para pasar `const char*`:
 > `EXPECT_EQ_STR(s.c_str(), "hola");`
 
+### Bloques de memoria
+
+| Macro | Falla si |
+|-------|----------|
+| `EXPECT_EQ_MEM(a, b, n)` | `memcmp(a, b, n) != 0` |
+
+Al fallar, indica el primer byte que difiere y sus valores. Útil para comparar
+buffers, structs serializados o arrays binarios:
+
+```c
+unsigned char esperado[4] = {0xDE, 0xAD, 0xBE, 0xEF};
+EXPECT_EQ_MEM(salida, esperado, sizeof(esperado));
+/* fallo: memory differs at byte 2: 0x00 != 0xBE */
+```
+
 ### Fallo incondicional
 
 | Macro | Efecto |
@@ -117,6 +150,14 @@ switch (tipo) {
 }
 ```
 
+### Alias `ASSERT_*`
+
+Para quien viene de Google Test, cada `EXPECT_*` tiene un alias `ASSERT_*`
+idéntico (`ASSERT_TRUE`, `ASSERT_EQ_INT`, `ASSERT_EQ_MEM`, `ASSERT_THROW`, …).
+
+> Ojo: en ctests **`EXPECT_*` ya es "hard"** (detiene el test al fallar), así que
+> `ASSERT_*` es exactamente lo mismo. La variante que *no* detiene es `SOFT_EXPECT_*`.
+
 ---
 
 ## Soft assertions (`SOFT_EXPECT_*`)
@@ -129,7 +170,9 @@ Mismas comprobaciones, pero acumulan en lugar de detener. Disponibles:
 | `SOFT_EXPECT_FALSE(c)`     | `EXPECT_FALSE` |
 | `SOFT_EXPECT_NULL(p)`      | `EXPECT_NULL` |
 | `SOFT_EXPECT_NOT_NULL(p)`  | `EXPECT_NOT_NULL` |
+| `SOFT_EXPECT_MSG(c, ...)`  | `EXPECT_MSG` |
 | `SOFT_EXPECT_EQ_INT(a, b)` | `EXPECT_EQ_INT` |
+| `SOFT_EXPECT_EQ_UINT(a, b)`| `EXPECT_EQ_UINT` |
 | `SOFT_EXPECT_EQ_STR(a, b)` | `EXPECT_EQ_STR` |
 | `SOFT_EXPECT_NEAR(a,b,e)`  | `EXPECT_NEAR` |
 | `SOFT_EXPECT_GT(a, b)`     | `EXPECT_GT` |

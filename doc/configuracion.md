@@ -14,6 +14,7 @@ que solo necesitas definir las que quieras cambiar.
 | `TT_NAME_MAX`     | `128` | Longitud máxima (bytes) del nombre de un test o suite. Los nombres más largos se truncan. |
 | `TT_MAX_SOFT`     | `16`  | Máximo de *soft assertions* fallidas que se acumulan por test. Las que excedan se descartan. |
 | `TT_MAX_FAILURES` | `256` | Máximo de fallos que se listan en la tabla resumen final. |
+| `TT_FILTER_MAX`   | `256` | Longitud máxima del patrón de `--filter`. |
 
 ## Cómo redefinirlas
 
@@ -46,15 +47,20 @@ target_compile_definitions(mis_tests PRIVATE
   proyectos; súbelos solo si tienes suites muy grandes o nombres/mensajes largos.
 - `TT_MAX_TESTS` es por **suite**, no global: como `tt_suite()` vacía el búfer al
   cambiar de grupo, el límite aplica a cada suite por separado.
-- Como el header es *header-only* con estado estático, **inclúyelo en un único
-  archivo de traducción** (normalmente el que tiene `main`). No lo incluyas en
-  varios `.c`/`.cpp` que se enlacen juntos, o tendrás múltiples copias del estado.
+- **Importante:** estas macros deben tener el **mismo valor en todos los archivos**
+  que incluyan `ctests.h` (definen el tamaño de buffers `extern` compartidos). Lo
+  más seguro es definirlas con `-D` en la compilación o en CMake con
+  `target_compile_definitions`, no archivo por archivo.
+- La implementación (`ctests.c`, o el archivo con `CTESTS_IMPLEMENTATION`) debe
+  compilarse **una sola vez**. Incluir `ctests.h` (sin la macro) en varios
+  archivos de test es correcto y esperado: el estado se comparte.
 
 ## Personalización de aspecto
 
 Los colores ANSI (`_TTC_*`) y los símbolos Unicode (`_TTS_*`) están definidos como
-macros internas en el header. No forman parte de la API pública y pueden cambiar
-entre versiones; si necesitas adaptarlos (por ejemplo, desactivar color en un
-terminal sin soporte ANSI), edita el header directamente.
+macros internas en la implementación. No forman parte de la API pública y pueden
+cambiar entre versiones. Para desactivar el color en tiempo de ejecución usa
+`tt_color(0)` o la variable de entorno `NO_COLOR` (ver [referencia-api.md](referencia-api.md));
+por defecto el color se activa solo si la salida es un terminal.
 
 Ver también: [referencia-api.md](referencia-api.md) · [guia-de-uso.md](guia-de-uso.md).

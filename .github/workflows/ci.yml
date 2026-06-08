@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build
+
+      - name: Build
+        run: cmake --build build --config Debug
+
+      - name: Test
+        run: ctest --test-dir build --build-config Debug --output-on-failure
+
+  # Comprueba que la libreria se puede instalar y consumir via find_package.
+  install-and-consume:
+    name: install + find_package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install ctests
+        run: |
+          cmake -S . -B build
+          cmake --install build --prefix "$HOME/.local"
+
+      - name: Build a consumer project
+        run: |
+          mkdir -p /tmp/consumer
+          cd /tmp/consumer
+          cat > CMakeLists.txt <<'EOF'
+          cmake_minimum_required(VERSION 3.14)
+          project(consumer C)
+          find_package(ctests 1.0 REQUIRED)
+          add_executable(app main.c)
+          target_link_libraries(app PRIVATE ctests::ctests)
+          EOF
+          cat > main.c <<'EOF'
+          #include "ctests.h"
+          static void t(void){ EXPECT_EQ_INT(1+1, 2); }
+          int main(void){ tt_suite("consumer"); tt_run("ok", t); return tt_summary(); }
+          EOF
+          cmake -S . -B build -DCMAKE_PREFIX_PATH="$HOME/.local"
+          cmake --build build
+          ./build/app

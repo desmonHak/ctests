@@ -18,9 +18,9 @@
  *            verbose mode y todas las macros EXPECT_*.
  *
  * El header vive en la raiz del repo; al compilar desde example/ se indica
- * con -I.. (o deja que CMake configure el include path automaticamente).
+ * con -I.. y se anade ctests.c (la implementacion). Con CMake todo es automatico.
  * @code
- *   gcc -std=c99 -I.. example/example_test.c -o example_test -lm && ./example_test
+ *   gcc -std=c99 -I.. example/example_test.c ctests.c -o example_test -lm && ./example_test
  * @endcode
  */
 #include "ctests.h"
