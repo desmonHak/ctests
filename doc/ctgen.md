@@ -28,11 +28,15 @@ gcc -std=c99 -O2 tools/ctgen.c -o ctgen      # en Windows: ctgen.exe
 ## Uso
 
 ```bash
-# Generar y ejecutar en un paso:
+# Un archivo: generar y ejecutar en un paso:
 ./ctgen --ctests . example/annotated.c -o annotated_tests --run
 
+# UNA CARPETA ENTERA: procesa los .c/.cpp anotados que haya dentro (los demas
+# se omiten en silencio). Con -r baja tambien a subcarpetas:
+./ctgen --ctests . src -r -o tests --run
+
 # Solo generar los .gen.c (para integrarlos en tu propio build):
-./ctgen --gen-only --emit-runner --outdir build/gen --ctests . src/mate.c
+./ctgen --gen-only --emit-runner --outdir build/gen --ctests . src -r
 ```
 
 | Opción | Significado |
@@ -41,14 +45,28 @@ gcc -std=c99 -O2 tools/ctgen.c -o ctgen      # en Windows: ctgen.exe
 | `--gen-only` | Solo genera los `.gen.c` (no compila) |
 | `--emit-runner` | Emite también el `main` (`_ctgen_runner.gen.c`) en modo gen-only |
 | `--outdir <dir>` | Carpeta de salida de los `.gen.c` (por defecto, junto a la fuente) |
+| `-r`, `--recursive` | Al pasar carpetas, baja a subcarpetas |
 | `--cc <cc>` | Compilador (por defecto `$CC`, o `g++` si hay `.cpp`, si no `gcc`) |
 | `--ctests <dir>` | Carpeta con `ctests.h` y `ctests.c` (por defecto `.`) |
 | `--keep` | No borra los `.gen.c` tras compilar |
 | `--run` | Ejecuta el binario tras compilar |
 | `-I<dir>` / `-D<macro>` | Se reenvían al compilador |
 
-Puedes pasar **varias fuentes**; se combinan en un único ejecutable (cada `.gen.c`
-incluye su propia fuente, así no hay choques entre funciones `static`).
+Puedes pasar **archivos y/o carpetas** mezclados; todas las fuentes anotadas se
+combinan en un único ejecutable (cada `.gen.c` incluye su propia fuente, así no
+hay choques entre funciones `static`). Las fuentes sin anotaciones se ignoran, y
+los `.gen.c` ya generados nunca se reprocesan.
+
+### Generar todos los tests de un proyecto
+
+```bash
+gcc -O2 tools/ctgen.c -o ctgen
+./ctgen --ctests <ruta/a/ctests> -r src -o build/tests --run
+```
+
+Un solo comando recorre `src/` (y subcarpetas con `-r`), genera tests de cada
+archivo anotado y produce un único binario. Con Make: `make gen` hace esto sobre
+la carpeta de ejemplos.
 
 ## Anotaciones
 
@@ -63,6 +81,11 @@ una llamada `EXPECT_*`. El separador `=>` divide la llamada del valor esperado
 | `@suite <texto>` | Fija la suite para los bloques siguientes (texto libre) |
 | `@case <texto>` | Nombre del test de este bloque (si no, el de la función) |
 | `@skip <razón>` | El test se marca como saltado |
+| `@let <stmt>` | Inyecta una sentencia C (arrange) en el cuerpo, en orden |
+| `@cleanup <stmt>` | Inyecta una sentencia C (teardown) en el cuerpo, en orden |
+| `@body … @endbody` | Cuerpo C **literal**: bucles, structs, `EXPECT_*` a mano |
+| `@suite_setup … @endsuite_setup` | Código *once* antes del primer test de la suite |
+| `@suite_teardown … @endsuite_teardown` | Código *once* tras el último test de la suite |
 
 ### Aserciones
 
@@ -138,6 +161,60 @@ add_test(NAME mate COMMAND mate_tests)
 
 (Ver [example/CMakeLists.txt](../example/CMakeLists.txt) para el caso real.)
 Con Make: `make gen` compila ctgen y genera+ejecuta los tests de `annotated.c`.
+
+## Tests complejos
+
+Para casos con estado, recursos o lógica, hay tres mecanismos combinables.
+
+**`@let` / `@cleanup`** — arrange/teardown manteniendo el estilo de tags. Se
+inyectan en el cuerpo **en el orden** en que aparecen:
+
+```c
+/**
+ * @suite Usuarios
+ * @case  crear_y_consultar
+ * @let     Usuario *u = crear("ana", 30);
+ * @notnull u
+ * @eq      u->edad   => 30
+ * @eq      u->nombre => "ana"
+ * @cleanup liberar(u);
+ */
+```
+
+**`@body … @endbody`** — cuerpo C literal (potencia total):
+
+```c
+/**
+ * @suite Parser
+ * @case  parsea_lista
+ * @body
+ *   int v[3];
+ *   int n = parsea("1,2,3", v, 3);
+ *   EXPECT_EQ(n, 3);
+ *   for (int i = 0; i < n; i++)
+ *       EXPECT_EQ(v[i], i + 1);
+ * @endbody
+ */
+```
+
+**`@suite_setup` / `@suite_teardown`** — fixtures *once* por suite (arrancar/parar
+un recurso una sola vez), que ctgen registra con `tt_suite_hooks_once`:
+
+```c
+/**
+ * @suite IntegracionHTTP
+ * @suite_setup
+ *   srv = arrancar_servidor(8080);
+ * @endsuite_setup
+ * @suite_teardown
+ *   parar_servidor(srv);
+ * @endsuite_teardown
+ */
+```
+
+> `@let`/`@cleanup` se ejecutan dentro de cada test (si una aserción *hard* falla
+> antes, el `@cleanup` posterior no se ejecuta). Para teardown garantizado de un
+> recurso de suite, usa `@suite_teardown`.
 
 ## Compatibilidad con Doxygen
 

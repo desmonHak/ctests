@@ -15,6 +15,7 @@
  *   gcc -O2 tools/ctgen.c -o ctgen
  *   ./ctgen --ctests . example/annotated.c -o annotated_tests --run
  */
+#include <stdlib.h>
 #include <string.h>
 
 /**
@@ -59,3 +60,41 @@ static int empieza_por(const char *s, const char *pre)
  * @contains saludo() => "mundo"
  */
 static const char *saludo(void) { return "Hola, mundo"; }
+
+/* --- Tests complejos (estado, cuerpo literal, fixtures de suite) --- */
+
+typedef struct { int *datos; int n; } Pila;
+
+static Pila *pila_crear(int cap) { Pila *p = malloc(sizeof *p); p->datos = malloc(sizeof(int) * cap); p->n = 0; return p; }
+static void  pila_push(Pila *p, int v) { p->datos[p->n++] = v; }
+static int   pila_pop(Pila *p) { return p->datos[--p->n]; }
+static void  pila_destruir(Pila *p) { free(p->datos); free(p); }
+
+/**
+ * @suite Pila
+ * @case  push_y_pop
+ * @let     Pila *p = pila_crear(8);
+ * @body
+ *   pila_push(p, 10);
+ *   pila_push(p, 20);
+ *   EXPECT_EQ(p->n, 2);
+ *   EXPECT_EQ(pila_pop(p), 20);
+ *   EXPECT_EQ(pila_pop(p), 10);
+ *   EXPECT_EQ(p->n, 0);
+ * @endbody
+ * @cleanup pila_destruir(p);
+ */
+static void _doc_pila(void) { (void)pila_push; (void)pila_pop; }
+
+/* Fixture once de suite: se ejecuta una sola vez antes/despues de la suite Pila. */
+static int g_pila_init = 0;
+
+/**
+ * @suite Pila
+ * @suite_setup
+ *   g_pila_init = 1;
+ * @endsuite_setup
+ * @suite_teardown
+ *   g_pila_init = 0;
+ * @endsuite_teardown
+ */

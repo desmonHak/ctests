@@ -105,9 +105,11 @@ run: $(BIN)/example_c$(EXE)
 $(BIN)/ctgen$(EXE): tools/ctgen.c | $(BIN)
 	$(CC) -O2 -I. tools/ctgen.c -o $@
 
-# Genera los tests de example/annotated.c con ctgen y los ejecuta.
+# Genera y ejecuta los tests anotados de toda una carpeta (por defecto example/).
+# Sobreescribe el directorio con: make gen GENDIR=ruta/a/src
+GENDIR ?= example
 gen: $(BIN)/ctgen$(EXE)
-	$(BIN)$(S)ctgen$(EXE) --ctests . example/annotated.c -o $(BIN)$(S)annotated_tests --run
+	$(BIN)$(S)ctgen$(EXE) --ctests . -r $(GENDIR) -o $(BIN)$(S)gen_tests --run
 
 clean:
 	@$(RMDIR)
@@ -117,6 +119,6 @@ help:
 	@echo   make            Compila los ejemplos en bin/
 	@echo   make test       Compila y ejecuta los ejemplos (verifica exit codes)
 	@echo   make run        Ejecuta el ejemplo completo (salida con color)
-	@echo   make gen        Compila ctgen y genera+ejecuta los tests de annotated.c
+	@echo   make gen        Compila ctgen y genera+ejecuta los tests anotados de GENDIR (def: example)
 	@echo   make clean      Borra bin/
 	@echo Variables: CC, CXX, CFLAGS, CXXFLAGS, LDLIBS

@@ -107,6 +107,11 @@ typedef jmp_buf _tt_jmpbuf;
 #define TT_MAX_REGISTERED 1024
 #endif
 
+/** Maximo de suites con hooks once registrados (TT_REGISTER_SUITE_HOOKS). */
+#ifndef TT_MAX_SUITE_HOOKS
+#define TT_MAX_SUITE_HOOKS 64
+#endif
+
 /* =============================================================================
  * API PUBLICA — declaraciones
  * ============================================================================= */
@@ -171,8 +176,9 @@ extern "C"
     void tt_xfail(const char *name, const char *reason, tt_fn fn);
 
     /* --- Auto-registro (macro TEST) --- */
-    void tt_register(const char *suite, const char *name, tt_fn fn); /**< Lo llama TEST(); rara vez a mano. */
-    int tt_run_all(void);                                            /**< Ejecuta los tests auto-registrados y devuelve tt_summary(). */
+    void tt_register(const char *suite, const char *name, tt_fn fn);                     /**< Lo llama TEST(); rara vez a mano. */
+    void tt_register_suite_hooks(const char *suite, tt_fn before_all, tt_fn after_all);  /**< Hooks once por suite (lo usa ctgen). */
+    int tt_run_all(void);                                                                /**< Ejecuta los tests auto-registrados y devuelve tt_summary(). */
 
     /* --- Resumen --- */
     int tt_summary(void); /**< 0 si todo paso, 1 si hubo fallos. Propagar desde main. */
@@ -657,6 +663,14 @@ static inline void _tt_ne_dispatch(const char *f, int ln, const char *ea, const 
     _TT_REG_CTOR(_tt_ctor_for_##fn)         \
     {                                       \
         tt_register((suite), (name), (fn)); \
+    }
+
+/* Registra hooks once (before_all/after_all) para una suite por su nombre.
+ * 'setup_fn' es un identificador unico generado por ctgen. */
+#define TT_REGISTER_SUITE_HOOKS(suite, setup_fn, teardown_fn)        \
+    _TT_REG_CTOR(_tt_ctor_sh_##setup_fn)                             \
+    {                                                                \
+        tt_register_suite_hooks((suite), (setup_fn), (teardown_fn)); \
     }
 
 /* =============================================================================
@@ -1779,6 +1793,44 @@ static void _tt_disarm_timeout(void) {}
         _tt_regs_n++;
     }
 
+    /* Hooks once por suite (registrados por nombre). */
+    typedef struct
+    {
+        const char *suite;
+        tt_fn before, after;
+    } _tt_shook_entry;
+    static _tt_shook_entry _tt_shooks[TT_MAX_SUITE_HOOKS];
+    static int _tt_shooks_n = 0;
+
+    void tt_register_suite_hooks(const char *suite, tt_fn before_all, tt_fn after_all)
+    {
+        int i;
+        for (i = 0; i < _tt_shooks_n; i++)
+            if (strcmp(_tt_shooks[i].suite, suite) == 0)
+            {
+                _tt_shooks[i].before = before_all;
+                _tt_shooks[i].after = after_all;
+                return;
+            }
+        if (_tt_shooks_n >= TT_MAX_SUITE_HOOKS)
+            return;
+        _tt_shooks[_tt_shooks_n].suite = suite;
+        _tt_shooks[_tt_shooks_n].before = before_all;
+        _tt_shooks[_tt_shooks_n].after = after_all;
+        _tt_shooks_n++;
+    }
+
+    static void _tt_apply_suite_hooks(const char *suite)
+    {
+        int i;
+        for (i = 0; i < _tt_shooks_n; i++)
+            if (strcmp(_tt_shooks[i].suite, suite) == 0)
+            {
+                tt_suite_hooks_once(_tt_shooks[i].before, _tt_shooks[i].after);
+                return;
+            }
+    }
+
     int tt_run_all(void)
     {
         const char *cur = NULL;
@@ -1788,6 +1840,7 @@ static void _tt_disarm_timeout(void) {}
             if (!cur || strcmp(cur, _tt_regs[i].suite) != 0)
             {
                 tt_suite(_tt_regs[i].suite);
+                _tt_apply_suite_hooks(_tt_regs[i].suite);
                 cur = _tt_regs[i].suite;
             }
             tt_run(_tt_regs[i].name, _tt_regs[i].fn);

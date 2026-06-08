@@ -37,6 +37,11 @@
  *   @suite <texto>            fija la suite para los bloques siguientes
  *   @case  <texto>            nombre del test (si no, el de la funcion)
  *   @skip  <razon>            el test se marca como saltado
+ *   @let     <stmt>           sentencia C inyectada (arrange) en orden
+ *   @cleanup <stmt>           sentencia C inyectada (teardown) en orden
+ *   @body ... @endbody        cuerpo C literal (bucles, structs, EXPECT_* a mano)
+ *   @suite_setup ... @endsuite_setup        hooks once de la suite (before_all)
+ *   @suite_teardown ... @endsuite_teardown  hooks once de la suite (after_all)
  *   @test  <expr>             EXPECT_TRUE(expr)
  *   @true/@false <expr>       EXPECT_TRUE/FALSE
  *   @null/@notnull <expr>     EXPECT_NULL/NOT_NULL
@@ -53,8 +58,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#ifdef _WIN32
+#include <io.h>
+#else
+#include <dirent.h>
+#endif
 
-#define MAXSRC 256
+#define MAXSRC 4096
 
 /* ---------- utilidades ---------- */
 
@@ -78,6 +89,21 @@ static char *lstrip(char *s)
 {
     while (*s && isspace((unsigned char)*s))
         s++;
+    return s;
+}
+
+/* Quita la decoracion de comentario (espacios iniciales y un '* ') conservando
+ * el resto de la linea tal cual (para los bloques verbatim @body/@suite_setup). */
+static char *strip_comment_prefix(char *s)
+{
+    while (*s == ' ' || *s == '\t')
+        s++;
+    if (*s == '*')
+    {
+        s++;
+        if (*s == ' ')
+            s++;
+    }
     return s;
 }
 
@@ -268,11 +294,20 @@ static char *process_source(const char *src, const char *outdir)
     int counter = 0, total = 0;
     FILE *o;
     char *p;
+    /* Hooks de suite acumulados (setup/teardown verbatim por nombre de suite). */
+    char sh_suite[32][256];
+    sbuf sh_set[32], sh_td[32];
+    int sh_n = 0, si;
 
     if (!buf)
     {
         fprintf(stderr, "ctgen: no se pudo leer %s\n", src);
         return NULL;
+    }
+    for (si = 0; si < 32; si++)
+    {
+        sh_set[si].p = sh_td[si].p = NULL;
+        sh_set[si].len = sh_set[si].cap = sh_td[si].len = sh_td[si].cap = 0;
     }
     base_ident(src, base, sizeof(base));
     abs_fwd(src, absinc, sizeof(absinc));
@@ -300,9 +335,12 @@ static char *process_source(const char *src, const char *outdir)
         char *end = strstr(p, "*/");
         char *block, *after, *line;
         char case_name[256], skip_reason[512];
-        int has_case = 0, has_skip = 0, n_assert = 0;
+        int has_case = 0, has_skip = 0, has_content = 0;
         long blen;
-        sbuf body;
+        sbuf body;     /* cuerpo del test (lets/asserts/body en orden) */
+        sbuf bsetup;   /* @suite_setup verbatim de este bloque */
+        sbuf bteardown;/* @suite_teardown verbatim de este bloque */
+        int mode = 0;  /* 0=normal 1=body 2=suite_setup 3=suite_teardown */
 
         if (!end)
             break;
@@ -312,17 +350,43 @@ static char *process_source(const char *src, const char *outdir)
         block[blen] = '\0';
         after = end + 2;
         case_name[0] = skip_reason[0] = '\0';
-        body.p = NULL;
-        body.len = body.cap = 0;
+        body.p = bsetup.p = bteardown.p = NULL;
+        body.len = body.cap = bsetup.len = bsetup.cap = bteardown.len = bteardown.cap = 0;
 
         for (line = strtok(block, "\n"); line; line = strtok(NULL, "\n"))
         {
+            char *raw = line;
             char *s = lstrip(line);
             char tag[32];
             char stmt[1024];
             size_t ti = 0;
             if (*s == '*')
                 s = lstrip(s + 1);
+
+            /* En modo verbatim, solo el @end... correspondiente sale del modo. */
+            if (mode != 0)
+            {
+                if (*s == '@' &&
+                    ((mode == 1 && !strncmp(s + 1, "endbody", 7)) ||
+                     (mode == 2 && !strncmp(s + 1, "endsuite_setup", 14)) ||
+                     (mode == 3 && !strncmp(s + 1, "endsuite_teardown", 17))))
+                {
+                    mode = 0;
+                    continue;
+                }
+                {
+                    char *v = strip_comment_prefix(raw);
+                    sbuf *dst = (mode == 1) ? &body : (mode == 2) ? &bsetup : &bteardown;
+                    if (mode == 1)
+                        sb_add(dst, "    ");
+                    sb_add(dst, v);
+                    sb_add(dst, "\n");
+                    if (mode == 1)
+                        has_content = 1;
+                }
+                continue;
+            }
+
             if (*s != '@')
                 continue;
             s++;
@@ -354,14 +418,52 @@ static char *process_source(const char *src, const char *outdir)
                 skip_reason[sizeof(skip_reason) - 1] = '\0';
                 has_skip = 1;
             }
+            else if (!strcmp(tag, "body"))
+                mode = 1;
+            else if (!strcmp(tag, "suite_setup"))
+                mode = 2;
+            else if (!strcmp(tag, "suite_teardown"))
+                mode = 3;
+            else if (!strcmp(tag, "let") || !strcmp(tag, "cleanup"))
+            {
+                rstrip(s);
+                sb_add(&body, "    ");
+                sb_add(&body, s);
+                sb_add(&body, "\n");
+                has_content = 1;
+            }
             else if (build_assert(stmt, sizeof(stmt), tag, s))
             {
                 sb_add(&body, stmt);
-                n_assert++;
+                has_content = 1;
             }
         }
 
-        if (n_assert > 0)
+        /* Volcar @suite_setup/@suite_teardown de este bloque al registro por suite. */
+        if (bsetup.p || bteardown.p)
+        {
+            int idx = -1, k;
+            for (k = 0; k < sh_n; k++)
+                if (!strcmp(sh_suite[k], cur_suite))
+                {
+                    idx = k;
+                    break;
+                }
+            if (idx < 0 && sh_n < 32)
+            {
+                idx = sh_n++;
+                snprintf(sh_suite[idx], sizeof(sh_suite[0]), "%s", cur_suite);
+            }
+            if (idx >= 0)
+            {
+                if (bsetup.p)
+                    sb_add(&sh_set[idx], bsetup.p);
+                if (bteardown.p)
+                    sb_add(&sh_td[idx], bteardown.p);
+            }
+        }
+
+        if (has_content)
         {
             char fname[256], display[256];
             if (has_case)
@@ -395,16 +497,33 @@ static char *process_source(const char *src, const char *outdir)
             total++;
         }
         free(body.p);
+        free(bsetup.p);
+        free(bteardown.p);
         free(block);
         p = after;
+    }
+
+    /* Emitir las suite hooks (setup/teardown once por suite). */
+    for (si = 0; si < sh_n; si++)
+    {
+        char setfn[256], tdfn[256];
+        snprintf(setfn, sizeof(setfn), "_ctg_%s_setup_%d", base, si);
+        snprintf(tdfn, sizeof(tdfn), "_ctg_%s_teardown_%d", base, si);
+        fprintf(o, "static void %s(void) {\n%s}\n", setfn, sh_set[si].p ? sh_set[si].p : "");
+        fprintf(o, "static void %s(void) {\n%s}\n", tdfn, sh_td[si].p ? sh_td[si].p : "");
+        fprintf(o, "TT_REGISTER_SUITE_HOOKS(\"");
+        emit_cstr(o, sh_suite[si]);
+        fprintf(o, "\", %s, %s)\n\n", setfn, tdfn);
+        free(sh_set[si].p);
+        free(sh_td[si].p);
+        total++;
     }
 
     fclose(o);
     free(buf);
     if (total == 0)
     {
-        remove(genpath);
-        fprintf(stderr, "ctgen: aviso: %s sin anotaciones @test; omitido\n", src);
+        remove(genpath); /* sin anotaciones: se omite en silencio (util al escanear carpetas) */
         return NULL;
     }
     fprintf(stderr, "ctgen: %s -> %s (%d test%s)\n", src, genpath, total, total == 1 ? "" : "s");
@@ -417,6 +536,91 @@ static int has_ext(const char *s, const char *ext)
 {
     size_t a = strlen(s), b = strlen(ext);
     return a >= b && strcmp(s + a - b, ext) == 0;
+}
+
+static int is_dir(const char *p)
+{
+    struct stat st;
+    if (stat(p, &st) != 0)
+        return 0;
+    return (st.st_mode & S_IFDIR) ? 1 : 0;
+}
+
+/* ¿Es un archivo fuente C/C++? Excluye los .gen.c generados por ctgen. */
+static int is_source(const char *p)
+{
+    if (has_ext(p, ".gen.c"))
+        return 0;
+    return has_ext(p, ".c") || has_ext(p, ".cpp") || has_ext(p, ".cc") || has_ext(p, ".cxx");
+}
+
+static void add_src(const char *path, char **list, int *n, int cap)
+{
+    if (*n < cap)
+        list[(*n)++] = xstrdup(path);
+}
+
+/* Recoge fuentes desde un archivo o (recursivamente, si rec) un directorio. */
+static void collect(const char *path, int rec, char **list, int *n, int cap)
+{
+    char full[2048];
+    if (!is_dir(path))
+    {
+        if (is_source(path))
+            add_src(path, list, n, cap);
+        return;
+    }
+#ifdef _WIN32
+    {
+        struct _finddata_t fd;
+        char pat[2048];
+        intptr_t h;
+        snprintf(pat, sizeof(pat), "%s/*", path);
+        h = _findfirst(pat, &fd);
+        if (h == -1)
+            return;
+        do
+        {
+            if (!strcmp(fd.name, ".") || !strcmp(fd.name, ".."))
+                continue;
+            snprintf(full, sizeof(full), "%s/%s", path, fd.name);
+            if (fd.attrib & _A_SUBDIR)
+            {
+                if (rec)
+                    collect(full, rec, list, n, cap);
+            }
+            else if (is_source(full))
+                add_src(full, list, n, cap);
+        } while (_findnext(h, &fd) == 0);
+        _findclose(h);
+    }
+#else
+    {
+        DIR *d = opendir(path);
+        struct dirent *e;
+        if (!d)
+            return;
+        while ((e = readdir(d)) != NULL)
+        {
+            if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, ".."))
+                continue;
+            snprintf(full, sizeof(full), "%s/%s", path, e->d_name);
+            if (is_dir(full))
+            {
+                if (rec)
+                    collect(full, rec, list, n, cap);
+            }
+            else if (is_source(full))
+                add_src(full, list, n, cap);
+        }
+        closedir(d);
+    }
+#endif
+}
+
+static int cmp_str(const void *a, const void *b)
+{
+    return strcmp(*(const char *const *)a, *(const char *const *)b);
 }
 
 /* Escribe el archivo runner (con main -> tt_run_all) y devuelve su ruta. */
@@ -439,10 +643,12 @@ static char *write_runner(const char *outdir)
 
 int main(int argc, char **argv)
 {
-    const char *sources[MAXSRC];
+    const char *paths[MAXSRC]; /* positionals: archivos o carpetas */
+    int npath = 0;
+    char *sources[MAXSRC]; /* fuentes resueltas (malloc'd) */
     int nsrc = 0;
     const char *out = NULL, *outdir = NULL, *cc = NULL, *ctests = ".";
-    int gen_only = 0, keep = 0, run = 0, any_cpp = 0, emit_runner = 0, i;
+    int gen_only = 0, keep = 0, run = 0, any_cpp = 0, emit_runner = 0, recursive = 0, i;
     char passthrough[2048];
     size_t pt = 0;
     char *genfiles[MAXSRC + 1];
@@ -469,17 +675,23 @@ int main(int argc, char **argv)
             keep = 1;
         else if (!strcmp(a, "--run"))
             run = 1;
+        else if (!strcmp(a, "-r") || !strcmp(a, "--recursive"))
+            recursive = 1;
         else if (!strcmp(a, "-h") || !strcmp(a, "--help"))
         {
-            printf("Uso: ctgen [opciones] <fuente.c> [...]\n"
+            printf("Uso: ctgen [opciones] <fuente.c | carpeta> [...]\n"
                    "  -o <exe>      compila un ejecutable de tests\n"
                    "  --gen-only    solo genera los .gen.c\n"
+                   "  --emit-runner emite tambien el main (con --gen-only)\n"
                    "  --outdir <d>  carpeta de salida de los .gen.c\n"
                    "  --cc <cc>     compilador (def: $CC o gcc/g++)\n"
                    "  --ctests <d>  carpeta con ctests.h/.c (def: .)\n"
+                   "  -r, --recursive  al pasar carpetas, baja a subcarpetas\n"
                    "  --keep        conserva los .gen.c\n"
                    "  --run         ejecuta el binario tras compilar\n"
-                   "  -I<d> -D<m>   se reenvian al compilador\n");
+                   "  -I<d> -D<m>   se reenvian al compilador\n"
+                   "\nPuedes pasar archivos o CARPETAS: ctgen procesa los .c/.cpp\n"
+                   "anotados que encuentre (los demas se omiten en silencio).\n");
             return 0;
         }
         else if (a[0] == '-' && (a[1] == 'I' || a[1] == 'D'))
@@ -491,25 +703,40 @@ int main(int argc, char **argv)
         }
         else
         {
-            if (nsrc < MAXSRC)
-                sources[nsrc++] = a;
-            if (has_ext(a, ".cpp") || has_ext(a, ".cc") || has_ext(a, ".cxx"))
-                any_cpp = 1;
+            if (npath < MAXSRC)
+                paths[npath++] = a;
         }
     }
 
-    if (nsrc == 0)
+    if (npath == 0)
     {
-        fprintf(stderr, "ctgen: falta el archivo fuente (usa -h)\n");
+        fprintf(stderr, "ctgen: falta el archivo o carpeta fuente (usa -h)\n");
         return 2;
     }
+
+    /* Expandir positionals (archivos y/o carpetas) a la lista de fuentes. */
+    for (i = 0; i < npath; i++)
+        collect(paths[i], recursive, sources, &nsrc, MAXSRC);
+    if (nsrc == 0)
+    {
+        fprintf(stderr, "ctgen: no se encontraron fuentes C/C++ en lo indicado\n");
+        return 1;
+    }
+    qsort(sources, (size_t)nsrc, sizeof(sources[0]), cmp_str); /* orden estable */
 
     for (i = 0; i < nsrc; i++)
     {
         char *g = process_source(sources[i], outdir);
         if (g)
+        {
             genfiles[ngen++] = g;
+            /* el lenguaje del binario lo deciden solo las fuentes anotadas */
+            if (has_ext(sources[i], ".cpp") || has_ext(sources[i], ".cc") || has_ext(sources[i], ".cxx"))
+                any_cpp = 1;
+        }
     }
+    for (i = 0; i < nsrc; i++)
+        free(sources[i]);
     if (ngen == 0)
     {
         fprintf(stderr, "ctgen: no se genero ningun test\n");

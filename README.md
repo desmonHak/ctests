@@ -187,10 +187,15 @@ static int suma(int a, int b) { return a + b; }
 
 ```bash
 gcc -O2 tools/ctgen.c -o ctgen
-./ctgen --ctests . mate.c -o mate_tests --run
+./ctgen --ctests . mate.c -o mate_tests --run     # un archivo
+./ctgen --ctests . -r src -o tests --run          # toda una carpeta (recursivo)
 ```
 
-Detalles, tags y la integración con CMake/Make en **[doc/ctgen.md](doc/ctgen.md)**.
+`ctgen` acepta archivos **o carpetas**: procesa los `.c`/`.cpp` anotados que
+encuentre y los combina en un único ejecutable (con `make gen` se hace sobre
+`example/`). Soporta tests complejos: `@let`/`@cleanup`, `@body … @endbody` y
+fixtures de suite. Detalles, tags y la integración CMake/Make en
+**[doc/ctgen.md](doc/ctgen.md)**.
 
 ## Requisitos
 
