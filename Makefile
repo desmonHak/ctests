@@ -55,7 +55,7 @@ BINS := $(BIN)/quickstart$(EXE) \
         $(BIN)/multifile$(EXE) \
         $(BIN)/example_c$(EXE)
 
-.PHONY: all examples test run clean help
+.PHONY: all examples test run gen clean help
 .DEFAULT_GOAL := all
 
 all: examples
@@ -101,6 +101,14 @@ test: examples
 run: $(BIN)/example_c$(EXE)
 	-@$(BIN)$(S)example_c$(EXE)
 
+# Compila la herramienta ctgen.
+$(BIN)/ctgen$(EXE): tools/ctgen.c | $(BIN)
+	$(CC) -O2 -I. tools/ctgen.c -o $@
+
+# Genera los tests de example/annotated.c con ctgen y los ejecuta.
+gen: $(BIN)/ctgen$(EXE)
+	$(BIN)$(S)ctgen$(EXE) --ctests . example/annotated.c -o $(BIN)$(S)annotated_tests --run
+
 clean:
 	@$(RMDIR)
 
@@ -109,5 +117,6 @@ help:
 	@echo   make            Compila los ejemplos en bin/
 	@echo   make test       Compila y ejecuta los ejemplos (verifica exit codes)
 	@echo   make run        Ejecuta el ejemplo completo (salida con color)
+	@echo   make gen        Compila ctgen y genera+ejecuta los tests de annotated.c
 	@echo   make clean      Borra bin/
 	@echo Variables: CC, CXX, CFLAGS, CXXFLAGS, LDLIBS

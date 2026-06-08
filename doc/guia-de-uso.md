@@ -51,11 +51,14 @@ La lista completa está en [aserciones.md](aserciones.md). Las más usadas:
 
 | Macro | Comprueba |
 |-------|-----------|
+| `EXPECT_EQ(a, b)` / `EXPECT_NE(a, b)` | igualdad para **cualquier** tipo: int/uint/cadena/flotante/puntero (C11/C++) |
 | `EXPECT_TRUE(c)` / `EXPECT_FALSE(c)` | condición booleana |
-| `EXPECT_EQ_INT(a, b)` | igualdad de enteros (con diff `Expected/Received`) |
-| `EXPECT_NEAR(a, b, eps)` | flotantes dentro de una tolerancia |
-| `EXPECT_EQ_STR(a, b)` / `EXPECT_CONTAINS(s, sub)` | cadenas |
+| `EXPECT_NEAR(a, b, eps)` | flotantes dentro de una tolerancia explícita |
+| `EXPECT_CONTAINS(s, sub)` | subcadena |
 | `EXPECT_NULL(p)` / `EXPECT_NOT_NULL(p)` | punteros |
+
+> `EXPECT_EQ` es la forma recomendada (un solo macro). En C99 usa las tipadas
+> `EXPECT_EQ_INT` / `EXPECT_EQ_STR` / … (ver [aserciones.md](aserciones.md)).
 
 ## 3. Soft assertions
 
@@ -285,6 +288,55 @@ int main(int argc, char **argv) {
 ./mis_tests --no-color            # sin color (o exporta NO_COLOR=1)
 ./mis_tests --verbose 2
 ```
+
+## 11b. Auto-registro con TEST()
+
+Para evitar el boilerplate de declarar funciones y enumerarlas en `main`, define
+los tests con la macro `TEST(suite, nombre)` y deja que `tt_run_all()` los ejecute:
+
+```c
+#include "ctests.h"
+
+TEST(Aritmetica, suma)  { EXPECT_EQ_INT(2 + 2, 4); }
+TEST(Aritmetica, resta) { EXPECT_EQ_INT(9 - 4, 5); }
+
+int main(int argc, char **argv) {
+    tt_parse_args(argc, argv);
+    return tt_run_all();      /* ejecuta todos los TEST() registrados */
+}
+```
+
+`suite` y `nombre` son identificadores (sin espacios). Funciona en GCC/Clang/MinGW
+y MSVC. Puedes mezclar `TEST()` con la API imperativa si lo necesitas.
+
+## 11c. Robustez: crashes y timeouts
+
+Por defecto, si un test provoca un **crash** (segfault, división por cero, …) se
+reporta como `✗ crashed: SIGSEGV` y la suite **continúa** en vez de tumbar el
+binario. Para desactivarlo (p. ej. al depurar): `tt_catch_crashes(0)` o `--no-catch`.
+
+En POSIX puedes poner un **timeout** por test para cazar cuelgues:
+
+```c
+tt_timeout(5);   /* o ./mis_tests --timeout 5 */
+```
+
+Un test que se pase se reporta como `timeout after 5 s`. (En Windows la llamada
+se acepta pero no tiene efecto.)
+
+## 11d. Capturar lo que imprime el código
+
+```c
+static void test_saludo(void) {
+    char buf[256];
+    tt_capture_begin();
+    saludar("mundo");                  /* hace printf(...) */
+    tt_capture_end(buf, sizeof buf);
+    EXPECT_CONTAINS(buf, "Hola, mundo!");
+}
+```
+
+Captura `stdout` y `stderr` entre las dos llamadas. Útil para testear CLIs.
 
 ## 12. Uso en CI
 

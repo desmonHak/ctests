@@ -1,0 +1,60 @@
+# Configuracion de Doxygen para ctests.
+#
+# Genera documentacion HTML de la API a partir de los comentarios del codigo.
+# Ejecutar desde la raiz del repositorio:
+#
+#     doxygen Doxyfile
+#
+# La salida queda en doc/doxygen_doc/html/index.html (ignorada por git).
+
+PROJECT_NAME           = "ctests"
+PROJECT_BRIEF          = "Libreria de tests unitarios e integracion para C/C++"
+PROJECT_NUMBER         = 1.0.0
+
+# Rutas relativas a la raiz del repo. Incluimos doc/ (no recursivo, asi no entra
+# en doc/doxygen_doc) para que se resuelvan los enlaces entre los .md.
+INPUT                  = ctests.h README.md LICENSE.md example/annotated.c doc
+EXCLUDE                = doc/doxygen_doc
+OUTPUT_DIRECTORY       = doc/doxygen_doc
+USE_MDFILE_AS_MAINPAGE = README.md
+
+# Queremos ver tambien los elementos 'static'.
+EXTRACT_ALL            = YES
+EXTRACT_STATIC         = YES
+EXTRACT_PRIVATE        = YES
+
+# C/C++
+OPTIMIZE_OUTPUT_FOR_C  = YES
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = NO
+
+# Salida
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+RECURSIVE              = NO
+QUIET                  = YES
+WARN_IF_UNDOCUMENTED   = NO
+
+# Codificacion
+INPUT_ENCODING         = UTF-8
+
+# -----------------------------------------------------------------------------
+# Anotaciones de ctgen: se declaran como ALIASES para que Doxygen las reconozca
+# (sin warnings "unknown command") y las renderice como casos de prueba.
+# (@test es un comando propio de Doxygen y se deja tal cual.)
+# -----------------------------------------------------------------------------
+ALIASES  = "eq=@li <b>EXPECT_EQ</b>"
+ALIASES += "ne=@li <b>EXPECT_NE</b>"
+ALIASES += "eq_int=@li <b>EXPECT_EQ_INT</b>"
+ALIASES += "eq_uint=@li <b>EXPECT_EQ_UINT</b>"
+ALIASES += "eq_str=@li <b>EXPECT_EQ_STR</b>"
+ALIASES += "eq_ptr=@li <b>EXPECT_EQ_PTR</b>"
+ALIASES += "contains=@li <b>EXPECT_CONTAINS</b>"
+ALIASES += "near=@li <b>EXPECT_NEAR</b>"
+ALIASES += "null=@li <b>EXPECT_NULL</b>"
+ALIASES += "notnull=@li <b>EXPECT_NOT_NULL</b>"
+ALIASES += "true=@li <b>EXPECT_TRUE</b>"
+ALIASES += "false=@li <b>EXPECT_FALSE</b>"
+ALIASES += "suite=@par Suite de tests:^^"
+ALIASES += "case=@par Caso de prueba:^^"
+ALIASES += "skip=@par Saltado:^^"

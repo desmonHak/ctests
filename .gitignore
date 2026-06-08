@@ -1,6 +1,8 @@
 # archivos ocultos y de configuración
 .*
 
+nul
+
 # ...pero estos dotfiles/carpetas SI se versionan
 !.gitignore
 !.gitattributes
@@ -40,6 +42,11 @@ deepseck*
 build*
 cmake-*
 bin/
+
+# Artefactos de ctgen
+*.gen.c
+/ctgen
+/ctgen.exe
 
 # Temporeales
 /test/programa_grande.py

@@ -15,6 +15,14 @@ que solo necesitas definir las que quieras cambiar.
 | `TT_MAX_SOFT`     | `16`  | Máximo de *soft assertions* fallidas que se acumulan por test. Las que excedan se descartan. |
 | `TT_MAX_FAILURES` | `256` | Máximo de fallos que se listan en la tabla resumen final. |
 | `TT_FILTER_MAX`   | `256` | Longitud máxima del patrón de `--filter`. |
+| `TT_MAX_REGISTERED` | `1024` | Máximo de tests auto-registrados con la macro `TEST()`. |
+
+También hay dos macros que **desactivan** funcionalidad (defínelas antes del include si dan problemas en tu toolchain):
+
+| Macro | Efecto |
+|-------|--------|
+| `CTESTS_NO_SIGJMP` | Usa `setjmp` simple en vez de `sigsetjmp` en POSIX. |
+| `CTESTS_NO_ALARM`  | Desactiva el timeout por test (no usa `alarm`/`SIGALRM`). |
 
 ## Cómo redefinirlas
 

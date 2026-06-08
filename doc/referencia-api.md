@@ -52,6 +52,41 @@ entienden GitHub Actions, GitLab CI, Jenkins, etc.
 tt_output_junit("results.xml");
 ```
 
+### `void tt_output_tap(const char *path)`
+
+Como `tt_output_junit` pero genera un informe **TAP** (Test Anything Protocol),
+que consumen `prove` y muchos CI. Llámalo antes de ejecutar; se cierra en `tt_summary()`.
+
+```c
+tt_output_tap("results.tap");
+```
+
+### `void tt_catch_crashes(int on)`
+
+Controla la captura de crashes. Con `1` (por defecto), si un test provoca
+`SIGSEGV`/`SIGFPE`/`SIGABRT`/… se reporta como fallo (`crashed: SIGSEGV`) y la
+suite **continúa** en vez de abortar todo el binario. Pasa `0` para desactivarlo
+(p. ej. al depurar bajo un debugger, para que el crash rompa de verdad).
+
+```c
+tt_catch_crashes(0);
+```
+
+> Robusto en POSIX; en Windows es *best-effort* (depende de que el runtime
+> traduzca la excepción a una señal).
+
+### `void tt_timeout(int seconds)`
+
+Límite de tiempo por test, en segundos (`0` = sin límite). Si un test lo supera,
+se reporta como fallo (`timeout after N s`) y la suite continúa.
+
+```c
+tt_timeout(5);   /* ningún test debería tardar más de 5 s */
+```
+
+> **Solo POSIX** (usa `alarm`/`SIGALRM`). En Windows la llamada se acepta pero no
+> tiene efecto (no hay equivalente portable seguro).
+
 ### `void tt_parse_args(int argc, char **argv)`
 
 Procesa los argumentos de la línea de comandos del binario de tests. Llámalo al
@@ -62,7 +97,10 @@ principio de `main()`.
 | `-f`, `--filter <texto>` | Ejecuta solo los tests cuyo `"suite > nombre"` contenga `<texto>` (sin distinguir mayúsculas) |
 | `-v`, `--verbose <0\|1\|2>` | Equivale a `tt_verbose(n)` |
 | `--junit <archivo>` | Equivale a `tt_output_junit(archivo)` |
+| `--tap <archivo>` | Equivale a `tt_output_tap(archivo)` |
 | `--color` / `--no-color` | Fuerza color on/off |
+| `--no-catch` | Equivale a `tt_catch_crashes(0)` |
+| `--timeout <seg>` | Equivale a `tt_timeout(seg)` (solo POSIX) |
 | `-h`, `--help` | Muestra la ayuda y termina con `exit(0)` |
 
 ```c
@@ -203,6 +241,63 @@ tt_xfail("calculo del IVA", "bug #42", test_iva);
 
 ---
 
+## Auto-registro de tests
+
+Alternativa a declarar funciones y llamarlas en `main`: defines el test con la
+macro `TEST` y se registra solo al arrancar el programa.
+
+### `TEST(suite, nombre) { ... }`  *(macro)*
+
+Define una función de test y la registra automáticamente. `suite` y `nombre`
+deben ser **identificadores** válidos (sin espacios ni comillas).
+
+```c
+TEST(Aritmetica, suma) { EXPECT_EQ_INT(2 + 2, 4); }
+```
+
+Mecanismo: constructor de arranque (GCC/Clang/MinGW); en MSVC vía sección
+`.CRT$XCU`. En un compilador sin ninguno, usa la API imperativa (`tt_run`).
+
+### `int tt_run_all(void)`
+
+Ejecuta todos los tests registrados con `TEST()` (agrupándolos por suite) y
+devuelve `tt_summary()`. Suele ser todo el `main`:
+
+```c
+int main(int argc, char **argv) {
+    tt_parse_args(argc, argv);
+    return tt_run_all();
+}
+```
+
+### `void tt_register(const char *suite, const char *name, tt_fn fn)`
+
+La usa `TEST()` por dentro; rara vez la llamarás a mano. Añade un test a la lista
+de registrados (máximo [`TT_MAX_REGISTERED`](configuracion.md)).
+
+> Los tests se registran en el orden de los constructores (dentro de un archivo,
+> el de definición; entre archivos, depende del enlazador). Define los tests de
+> una misma suite juntos para que no se repita su cabecera.
+
+## Captura de salida
+
+### `void tt_capture_begin(void)` / `size_t tt_capture_end(char *buf, size_t cap)`
+
+Redirige `stdout` **y** `stderr` a un buffer temporal entre ambas llamadas;
+`tt_capture_end` restaura los flujos y copia lo capturado a `buf` (NUL-terminado),
+devolviendo el número de bytes. Útil para testear lo que imprime tu código.
+
+```c
+char buf[256];
+tt_capture_begin();
+imprime_saludo("mundo");          /* hace printf(...) */
+tt_capture_end(buf, sizeof buf);
+EXPECT_CONTAINS(buf, "Hola, mundo!");
+```
+
+> Si no se puede crear el archivo temporal, la captura se desactiva sin romper
+> nada (`tt_capture_end` devuelve 0 y `buf` queda vacío).
+
 ## Control dentro de un test
 
 ### `tt_skip(reason)`  *(macro)*
@@ -246,7 +341,7 @@ int main(void) {
 | Estado | Símbolo | ¿Cuenta como fallo? | Cómo se produce |
 |--------|:------:|:--------------------:|-----------------|
 | pass   | ✓ | No  | el test terminó sin aserciones fallidas |
-| fail   | ✗ | **Sí** | una `EXPECT_*` falló, o quedaron `SOFT_EXPECT_*` fallidas |
+| fail   | ✗ | **Sí** | una `EXPECT_*` falló, quedaron `SOFT_EXPECT_*` fallidas, o el test crasheó / agotó el timeout |
 | skip   | ↷ | No  | `tt_skip_test()` o `tt_skip()` |
 | xfail  | ∼ | No  | `tt_xfail()` y el test falló (lo esperado) |
 | xpass  | ! | **Sí** | `tt_xfail()` pero el test pasó (inesperado) |

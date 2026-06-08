@@ -10,6 +10,43 @@ familias:
 > Las macros que comparan enteros hacen *cast* a `long long`; las de flotantes a
 > `double`. Pasa expresiones de tipos compatibles.
 
+> **Ubicación del fallo:** todo mensaje de fallo se prefija con `archivo:línea`
+> (p. ej. `tests/foo.c:42:`), clicable en la mayoría de editores y terminales.
+
+---
+
+## API unificada (recomendada)
+
+Para no memorizar una macro por tipo, usa **`EXPECT_EQ` / `EXPECT_NE`**: un solo
+macro que funciona con enteros (con/sin signo), cadenas, flotantes y punteros. El
+tipo se deduce del **primer** argumento; el mensaje de fallo muestra el mismo diff
+`Expected/Received`. Convención: `EXPECT_EQ(recibido, esperado)`.
+
+```c
+EXPECT_EQ(suma(2, 3), 5);        // enteros
+EXPECT_EQ(hash(), 0xFFu);        // sin signo
+EXPECT_EQ(nombre(), "ana");      // cadenas (strcmp)
+EXPECT_EQ(nodo->sig, esperado);  // punteros
+EXPECT_EQ(0.1 + 0.2, 0.3);       // flotantes: tolerancia relativa (~1e-9)
+EXPECT_NE(id_nuevo(), id_viejo());
+```
+
+| Macro | Comprueba |
+|-------|-----------|
+| `EXPECT_EQ(a, b)` | `a == b` según el tipo de `a` (cadenas con `strcmp`, flotantes con tolerancia) |
+| `EXPECT_NE(a, b)` | `a != b` |
+
+Tienen su versión `SOFT_EXPECT_EQ` / `SOFT_EXPECT_NE` y alias `ASSERT_EQ` / `ASSERT_NE`.
+
+> **Requiere C11** (usa `_Generic`) o **C++**. En **C99** no están disponibles: usa
+> las macros tipadas de abajo (`EXPECT_EQ_INT`, `EXPECT_EQ_STR`, …), que siguen
+> existiendo y son además lo que `EXPECT_EQ` usa por dentro.
+>
+> El tipo lo fija el **primer** argumento: en `EXPECT_EQ(x, 5)` con `x` de tipo
+> `double`, la comparación es flotante; pon siempre el valor *real* primero.
+
+Las macros tipadas siguientes son la API **explícita** (y la única en C99).
+
 ---
 
 ## Hard assertions (`EXPECT_*`)
@@ -101,6 +138,18 @@ Nunca compares flotantes por igualdad exacta; usa una tolerancia:
 EXPECT_NEAR(0.1 + 0.2, 0.3, 1e-9);   /* 0.1+0.2 != 0.3 exacto en IEEE 754 */
 ```
 
+Para magnitudes grandes la tolerancia **absoluta** se queda corta; usa la **relativa**:
+
+| Macro | Falla si |
+|-------|----------|
+| `EXPECT_NEAR_REL(a, b, rel)` | `\|a-b\| > rel * max(\|a\|,\|b\|)` |
+| `EXPECT_EQ_FLOAT(a, b)` | igual que `EXPECT_NEAR_REL(a, b, 1e-9)` |
+
+```c
+EXPECT_NEAR_REL(1e9 + 1.0, 1e9 + 1.5, 1e-6);
+EXPECT_EQ_FLOAT(velocidad, esperada);
+```
+
 ### Cadenas (C, terminadas en `\0`)
 
 | Macro | Falla si |
@@ -132,6 +181,22 @@ buffers, structs serializados o arrays binarios:
 unsigned char esperado[4] = {0xDE, 0xAD, 0xBE, 0xEF};
 EXPECT_EQ_MEM(salida, esperado, sizeof(esperado));
 /* fallo: memory differs at byte 2: 0x00 != 0xBE */
+```
+
+### Arrays y rangos
+
+| Macro | Falla si |
+|-------|----------|
+| `EXPECT_ARRAY_EQ(a, b, n)` | algún `a[i] != b[i]` (compara con `==`, reporta el índice) |
+| `EXPECT_IN_RANGE(x, lo, hi)` | `x < lo` o `x > hi` (evaluado como `double`) |
+
+`EXPECT_ARRAY_EQ` compara **elemento a elemento** (no byte a byte como `EXPECT_EQ_MEM`),
+así que sirve para arrays de cualquier tipo escalar:
+
+```c
+int a[3] = {1, 2, 3}, b[3] = {1, 2, 3};
+EXPECT_ARRAY_EQ(a, b, 3);
+EXPECT_IN_RANGE(edad, 0, 120);
 ```
 
 ### Fallo incondicional

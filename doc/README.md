@@ -9,6 +9,7 @@
 | [referencia-api.md](referencia-api.md)  | Referencia de todas las funciones públicas `tt_*` |
 | [aserciones.md](aserciones.md)          | Referencia de todas las macros `EXPECT_*` y `SOFT_EXPECT_*` |
 | [configuracion.md](configuracion.md)    | Macros de configuración en tiempo de compilación |
+| [ctgen.md](ctgen.md)                    | Generación de tests desde anotaciones (`@tag`) con la herramienta `ctgen` |
 
 ## Modelo mental en una frase
 

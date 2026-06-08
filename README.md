@@ -42,14 +42,19 @@ progreso — todo sin dependencias externas, en C puro o en C++.
   estado es compartido. Tus tests no tienen que vivir en un único `.c`.
 - **C y C++**: la misma API funciona en C99 y C++17. En C++ se añaden
   `EXPECT_THROW` / `EXPECT_NO_THROW`.
-- **Aserciones expresivas**: enteros (con/sin signo), flotantes con tolerancia,
-  cadenas, punteros, bloques de memoria, orden, booleanos y mensajes personalizados.
+- **Aserciones expresivas y simples**: un solo `EXPECT_EQ(a, b)` para enteros,
+  cadenas, flotantes y punteros (C11/C++ vía `_Generic`/plantillas); más orden,
+  memoria, rango, booleanos y mensajes personalizados.
 - **Soft assertions**: acumulan todos los fallos de un test en vez de parar en el primero.
 - **Fixtures**: `setup`/`teardown` por test y hooks `once` por suite.
 - **Skip y xfail**: marca tests pendientes o fallos conocidos sin romper la build.
-- **Tests parametrizados** (data-driven) con `tt_run_param`.
-- **Pensada para CI**: salida JUnit XML, código de salida correcto, filtrado y
-  opciones por línea de comandos (`--filter`, `--junit`, `--no-color`…).
+- **Tests parametrizados** (data-driven) con `tt_run_param`, y **auto-registro**
+  opcional con `TEST(suite, nombre) { ... }` (sin enumerarlos en `main`).
+- **Robustez**: un crash en un test (segfault, etc.) se reporta y la suite
+  continúa; `timeout` por test en POSIX; captura de `stdout`/`stderr`.
+- **Mensajes con `archivo:línea`** clicables en el editor.
+- **Pensada para CI**: salida JUnit XML y TAP, código de salida correcto, filtrado
+  y opciones por línea de comandos (`--filter`, `--junit`, `--tap`, `--no-color`…).
 - **Salida robusta**: color con auto-detección de terminal (respeta `NO_COLOR`),
   VT100/UTF-8 activados solos en la consola de Windows.
 
@@ -61,7 +66,7 @@ progreso — todo sin dependencias externas, en C puro o en C++.
 static int sumar(int a, int b) { return a + b; }
 
 static void test_suma(void) {
-    EXPECT_EQ_INT(sumar(2, 3), 5);
+    EXPECT_EQ(sumar(2, 3), 5);   // un solo EXPECT_EQ para todos los tipos (C11/C++)
 }
 
 int main(void) {
@@ -118,6 +123,7 @@ o `find_package(ctests)` tras instalar. Detalles en **[doc/instalacion.md](doc/i
 | [doc/referencia-api.md](doc/referencia-api.md)| Cada función pública (`tt_*`) documentada |
 | [doc/aserciones.md](doc/aserciones.md)        | Cada macro `EXPECT_*` / `SOFT_EXPECT_*` / `ASSERT_*` con ejemplos |
 | [doc/configuracion.md](doc/configuracion.md)  | Macros de compilación (`TT_MAX_TESTS`, `TT_MSG_MAX`, …) |
+| [doc/ctgen.md](doc/ctgen.md)                  | Generación de tests desde anotaciones `@tag` con la herramienta `ctgen` |
 
 ## Ejemplos
 
@@ -129,7 +135,9 @@ En [`example/`](example/):
 | [example_test.c](example/example_test.c)          | Recorrido completo en C99 (suites, fixtures, skip, xfail, soft) |
 | [example_test.cpp](example/example_test.cpp)      | Recorrido en C++17 incluyendo aserciones de excepciones |
 | [advanced.c](example/advanced.c)                  | Tests parametrizados, hooks `once`, aserciones nuevas, CLI |
+| [autoregister.c](example/autoregister.c)          | Macro `TEST()` (auto-registro) + captura de `stdout` |
 | [multifile_*.c](example/)                         | Tests repartidos en varios archivos que comparten estado |
+| [annotated.c](example/annotated.c)                | Fuente anotada con `@tag`; los tests los genera `ctgen` |
 
 Tienes dos formas de compilarlos y probarlos:
 
@@ -155,10 +163,34 @@ El binario de tests acepta opciones si llamas a `tt_parse_args(argc, argv)`:
 ```bash
 ./mis_tests --filter Aritmetica   # solo suites/tests que contengan "Aritmetica"
 ./mis_tests --junit results.xml   # genera informe JUnit XML para CI
+./mis_tests --tap results.tap     # genera informe TAP
 ./mis_tests --no-color            # desactiva el color
+./mis_tests --no-catch            # no captura crashes (útil al depurar)
+./mis_tests --timeout 5           # límite de 5 s por test (solo POSIX)
 ./mis_tests --verbose 2           # nivel de detalle
 ./mis_tests --help
 ```
+
+## Generación de tests desde anotaciones (ctgen)
+
+Para funciones puras puedes **anotar** la función y dejar que la herramienta
+`ctgen` genere los tests y un ejecutable real:
+
+```c
+/**
+ * @suite Aritmetica
+ * @eq_int suma(2, 3) => 5
+ * @test   suma(0, 0) == 0
+ */
+static int suma(int a, int b) { return a + b; }
+```
+
+```bash
+gcc -O2 tools/ctgen.c -o ctgen
+./ctgen --ctests . mate.c -o mate_tests --run
+```
+
+Detalles, tags y la integración con CMake/Make en **[doc/ctgen.md](doc/ctgen.md)**.
 
 ## Requisitos
 
