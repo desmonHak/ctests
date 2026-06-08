@@ -57,6 +57,9 @@ if(NOT MSVC)
         "${_ctgen_dir}/annotated.gen.c"
         "${_ctgen_dir}/_ctgen_runner.gen.c")
     target_link_libraries(ctests_annotated PRIVATE ctests::ctests)
+    # ctgen genera EXPECT_EQ (@eq) que requiere C11; fijarlo aunque el proyecto
+    # se configure con un estandar C anterior (p.ej. el job C99 del CI).
+    set_target_properties(ctests_annotated PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON)
     add_test(NAME annotated COMMAND ctests_annotated)
 endif()
 

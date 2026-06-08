@@ -47,6 +47,14 @@
 #ifndef ctests_H
 #define ctests_H
 
+/* Version de la libreria (semver). TT_VERSION_NUM permite comparaciones:
+ * #if TT_VERSION_NUM >= 10000  (1.0.0). */
+#define TT_VERSION_MAJOR 1
+#define TT_VERSION_MINOR 0
+#define TT_VERSION_PATCH 0
+#define TT_VERSION "1.0.0"
+#define TT_VERSION_NUM (TT_VERSION_MAJOR * 10000 + TT_VERSION_MINOR * 100 + TT_VERSION_PATCH)
+
 /* Includes necesarios para la SUPERFICIE de la API (tipos y macros de asercion). */
 #include <math.h>   /* fabs   — EXPECT_NEAR */
 #include <setjmp.h> /* jmp_buf, longjmp */

@@ -28,6 +28,38 @@ jobs:
       - name: Test
         run: ctest --test-dir build --build-config Debug --output-on-failure
 
+  # Compila/testea en C99 estricto: ejercita el fallback de macros tipadas
+  # (sin _Generic). El target de la API unificada (annotated) se fija a C11.
+  c99-fallback:
+    name: C99 fallback
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Configure (C99)
+        run: cmake -S . -B build -DCMAKE_C_STANDARD=99 -DCMAKE_C_STANDARD_REQUIRED=ON
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  # ASan + UBSan en Linux: util por el uso de setjmp/longjmp y senales.
+  sanitizers:
+    name: ASan + UBSan
+    runs-on: ubuntu-latest
+    env:
+      CFLAGS: "-fsanitize=address,undefined -fno-omit-frame-pointer -g"
+      CXXFLAGS: "-fsanitize=address,undefined -fno-omit-frame-pointer -g"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
   # Comprueba que la libreria se puede instalar y consumir via find_package.
   install-and-consume:
     name: install + find_package

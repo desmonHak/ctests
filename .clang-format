@@ -1,0 +1,9 @@
+# Estilo de formato de ctests (C/C++). Base Microsoft: llaves estilo Allman,
+# indentacion de 4 espacios. Coincide con el formateo aplicado en el repo.
+BasedOnStyle: Microsoft
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 120
+PointerAlignment: Right
+AllowShortFunctionsOnASingleLine: Inline

@@ -40,6 +40,7 @@ else()
 endif()
 
 option(CTESTS_BUILD_EXAMPLES "Compilar los ejemplos de ctests" ${CTESTS_IS_TOP_LEVEL})
+option(CTESTS_BUILD_TESTS "Compilar los meta-tests de ctests" ${CTESTS_IS_TOP_LEVEL})
 
 include(GNUInstallDirs)
 
@@ -58,9 +59,14 @@ if(UNIX AND NOT APPLE)
 endif()
 
 # --- Ejemplos / tests ------------------------------------------------------
-if(CTESTS_BUILD_EXAMPLES)
+if(CTESTS_BUILD_EXAMPLES OR CTESTS_BUILD_TESTS)
     enable_testing()
+endif()
+if(CTESTS_BUILD_EXAMPLES)
     add_subdirectory(example)
+endif()
+if(CTESTS_BUILD_TESTS)
+    add_subdirectory(test)
 endif()
 
 # --- Instalacion y find_package() ------------------------------------------
