@@ -825,7 +825,7 @@ extern "C"
 #endif
 
     /* --- Estado compartido (definicion de los simbolos extern del header) --- */
-    jmp_buf _tt_jmp;
+    _tt_jmpbuf _tt_jmp;
     int _tt_jmp_code;
     char _tt_errmsg[TT_MSG_MAX];
     char _tt_soft[TT_MAX_SOFT][TT_MSG_MAX];
