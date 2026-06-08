@@ -38,7 +38,8 @@ jobs:
 
       - name: Install ctests
         run: |
-          cmake -S . -B build
+          cmake -S . -B build -DCTESTS_BUILD_EXAMPLES=OFF
+          cmake --build build
           cmake --install build --prefix "$HOME/.local"
 
       - name: Build a consumer project
